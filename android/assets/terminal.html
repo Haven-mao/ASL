@@ -1,0 +1,34 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<link rel="stylesheet" href="xterm.css"><style>
+*{box-sizing:border-box}html,body,#terminals{height:100%;margin:0;background:#151515;color:#dedede;font-family:monospace;overflow:hidden}.asl-terminal{position:absolute;inset:0;padding:12px;visibility:hidden;pointer-events:none}.asl-terminal.active{visibility:visible;pointer-events:auto}.xterm-viewport::-webkit-scrollbar{width:5px}.xterm-viewport::-webkit-scrollbar-thumb{background:#555}#latest{position:absolute;bottom:14px;right:24px;border:1px solid #555;background:#292929;color:#eee;border-radius:16px;padding:7px 14px;z-index:2;display:none}
+</style></head><body><div id="terminals"></div><button id="latest">↓ 回到最新</button>
+<script src="xterm.js"></script><script src="addon-fit.js"></script><script>
+const sessions=new Map(),container=document.getElementById('terminals'),latest=document.getElementById('latest');let active='console',scheduled=false;
+function create(id){
+ const element=document.createElement('div');element.className='asl-terminal';container.append(element);
+ const term=new Terminal({fontSize:15,fontFamily:'monospace',cursorBlink:false,scrollback:20000,convertEol:false,theme:{background:'#151515',foreground:'#dedede',cursor:'#dedede',selectionBackground:'#555'}});
+ const fit=new FitAddon.FitAddon();term.loadAddon(fit);term.open(element);
+ const state={id,element,term,fit,offset:0,writing:false,pending:false};sessions.set(id,state);
+ term.onData(data=>ASL.input(id,data));term.onResize(size=>ASL.resize(id,size.cols,size.rows));term.onScroll(()=>{if(id===active)updateLatest();});
+ let touchY=null,remainder=0,dragged=false;
+ element.addEventListener('touchstart',e=>{if(e.touches.length===1){touchY=e.touches[0].clientY;remainder=0;dragged=false;}},{passive:true});
+ element.addEventListener('touchmove',e=>{if(touchY===null||e.touches.length!==1)return;const y=e.touches[0].clientY,delta=touchY-y;touchY=y;if(Math.abs(delta)>2)dragged=true;remainder+=delta;const lineHeight=Math.max(10,element.querySelector('.xterm-screen').clientHeight/term.rows);const lines=Math.trunc(remainder/lineHeight);if(lines){term.scrollLines(lines);remainder-=lines*lineHeight;}if(dragged){e.preventDefault();e.stopImmediatePropagation();updateLatest();}},{passive:false,capture:true});
+ element.addEventListener('touchend',()=>{touchY=null;if(!dragged)term.focus();},{passive:true});
+ term.attachCustomKeyEventHandler(event=>{if(event.type==='keydown'&&event.shiftKey&&(event.key==='PageUp'||event.key==='PageDown')){term.scrollPages(event.key==='PageUp'?-1:1);updateLatest();return false;}return true;});
+ return state;
+}
+function updateLatest(){const s=sessions.get(active);latest.style.display=s&&s.term.buffer.active.viewportY<s.term.buffer.active.baseY?'block':'none';}
+function select(id){const s=sessions.get(id);if(!s)return;active=id;for(const state of sessions.values())state.element.classList.toggle('active',state===s);s.fit.fit();ASL.resize(id,s.term.cols,s.term.rows);s.term.focus();updateLatest();}
+function drain(state){if(state.writing){state.pending=true;return;}state.pending=false;let chunk;try{chunk=JSON.parse(ASL.poll(state.id,state.offset));}catch(e){return;}state.offset=chunk.next??state.offset;if(!chunk.text)return;
+ state.writing=true;const previousY=state.term.buffer.active.viewportY,following=previousY>=state.term.buffer.active.baseY;
+ state.term.write(chunk.text,()=>{state.writing=false;if(!following)state.term.scrollToLine(previousY);if(state.id===active){updateLatest();ASL.rendered(state.id,chunk.received_ms||0);}if(chunk.more||state.pending)queueMicrotask(()=>drain(state));});
+}
+window.aslRefresh=()=>{let tabs;try{tabs=JSON.parse(ASL.tabs());}catch(e){return;}const ids=new Set(tabs.map(t=>t.id));for(const [id,s] of sessions){if(!ids.has(id)){s.term.dispose();s.element.remove();sessions.delete(id);}}
+ for(const tab of tabs)if(!sessions.has(tab.id))create(tab.id);const selected=tabs.find(t=>t.active);if(selected&&(active!==selected.id||!sessions.get(active)?.element.classList.contains('active')))select(selected.id);for(const s of sessions.values())drain(s);
+};
+window.aslSelect=select;window.aslFocus=()=>sessions.get(active)?.term.focus();window.aslCopy=()=>ASL.copy(sessions.get(active)?.term.getSelection()||'');window.aslPaste=text=>sessions.get(active)?.term.paste(text);
+latest.onclick=()=>{sessions.get(active)?.term.scrollToBottom();updateLatest();};
+new ResizeObserver(()=>{if(!scheduled){scheduled=true;requestAnimationFrame(()=>{scheduled=false;sessions.get(active)?.fit.fit();});}}).observe(container);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)window.aslRefresh();});
+window.aslRefresh();
+</script></body></html>

@@ -1,0 +1,17 @@
+build/
+guest/asltree/
+__pycache__/
+*.py[cod]
+*.apk
+*.idsig
+*.jks
+*.keystore
+*.qcow2
+*.raw
+*.asl
+*.sqlite*
+*.db*
+*.key
+*.pem
+.env*
+local.properties

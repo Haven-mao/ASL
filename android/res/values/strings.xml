@@ -1,0 +1,3 @@
+<resources>
+    <string name="accessibility_description">允许 ASL 中的 AI 助手读取当前界面、截图、点击、滑动和输入，以操作你指定的 Android 应用。你可以随时在此关闭服务。</string>
+</resources>

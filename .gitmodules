@@ -1,0 +1,3 @@
+[submodule "external/ASLTree"]
+	path = external/ASLTree
+	url = https://github.com/Haven-mao/ASLTree.git
